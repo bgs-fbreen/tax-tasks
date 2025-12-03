@@ -1,0 +1,1697 @@
+#!/bin/bash
+clear
+# =============================================================================
+# Federal and Michigan Tax Tasks for Taskwarrior
+# =============================================================================
+# Entities:
+#   - Frank Breen (Personal)
+#   - Breen GeoScience, Inc.(S-Corp - Consulting)
+#   - MHB Properties, LLC (Property Management)
+#       - 905 Brown
+#       - 711 Pine
+#       - 819 Helen
+#
+# Project: acc.tax
+# =============================================================================
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# Base project
+PROJECT="acc.tax"
+
+# Entity names
+PERSONAL="Frank Breen"
+SCORP="Breen GeoScience Inc"
+LLC="MHB Properties LLC"
+
+# MHB Properties
+PROP1="905 Brown"
+PROP2="711 Pine"
+PROP3="819 Helen"
+
+# Recent searches file
+RECENT_SEARCHES_FILE=~/.task_recent_searches
+
+# Payment tracking file
+PAYMENT_TRACKING_FILE=~/.tax_payments_tracker.csv
+
+# =============================================================================
+#                     TASKWARRIOR REPORT CONFIGURATION
+# =============================================================================
+# Remove Age column from reports - override for this session
+TASK_RC_OVERRIDE="rc.report.list.columns=id,priority,project,tags,due,description.count,urgency rc.report.list.labels=ID,P,Project,Tags,Due,Description,Urg"
+
+# Function to run task with our custom report format (no Age column)
+task_list() {
+    task $TASK_RC_OVERRIDE "$@"
+}
+
+# Configure Taskwarrior permanently (run once)
+configure_taskwarrior() {
+    echo ""
+    echo -e "${CYAN}Configuring Taskwarrior report format (removing Age column)...${NC}"
+    
+    # List report - no age
+    task config report.list.columns id,priority,project,tags,due,description.count,urgency 2>/dev/null
+    task config report.list.labels ID,P,Project,Tags,Due,Description,Urg 2>/dev/null
+    
+    # Next report - no age
+    task config report.next.columns id,priority,project,tags,due,description.count,urgency 2>/dev/null
+    task config report.next.labels ID,P,Project,Tags,Due,Description,Urg 2>/dev/null
+    
+    # Ready report - no age
+    task config report.ready.columns id,priority,project,tags,due,description.count,urgency 2>/dev/null
+    task config report.ready.labels ID,P,Project,Tags,Due,Description,Urg 2>/dev/null
+    
+    echo -e "${GREEN}✓ Taskwarrior configured! ${NC}"
+    echo ""
+}
+
+# =============================================================================
+#                           INTERACTIVE MENU
+# =============================================================================
+
+show_header() {
+    clear
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║            FEDERAL & MICHIGAN TAX TASK GENERATOR                     ║"
+    echo "║                        for Taskwarrior                               ║"
+    echo "╠══════════════════════════════════════════════════════════════════════╣"
+    echo "║  Entities:                                                           ║"
+    echo "║    - Frank Breen (Personal)                                          ║"
+    echo "║    - Breen GeoScience Inc (S-Corp)                                   ║"
+    echo "║    - MHB Properties LLC (LLC)                                        ║"
+    echo "║        - 905 Brown                                                   ║"
+    echo "║        - 711 Pine                                                    ║"
+    echo "║        - 819 Helen                                                   ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+}
+
+show_menu() {
+    echo -e "${YELLOW}Select an option:${NC}"
+    echo ""
+    echo -e "${BOLD}  CREATE TASKS:${NC}"
+    echo -e "  ${BOLD}1)${NC} Create tasks for a ${CYAN}single tax year${NC}"
+    echo -e "  ${BOLD}2)${NC} Create tasks for a ${CYAN}range of tax years${NC}"
+    echo -e "  ${BOLD}3)${NC} Create tasks from a ${CYAN}specific start date${NC}"
+    echo -e "  ${BOLD}4)${NC} Create tasks for ${CYAN}current tax year${NC} (auto-detect)"
+    echo -e "  ${BOLD}5)${NC} Create tasks for ${CYAN}2024, 2025, and 2026${NC}"
+    echo ""
+    echo -e "${BOLD}  SEARCH & VIEW:${NC}"
+    echo -e "  ${BOLD}6)${NC} ${MAGENTA}Search tasks${NC}"
+    echo -e "  ${BOLD}7)${NC} ${MAGENTA}Quick search presets${NC}"
+    echo -e "  ${BOLD}8)${NC} View existing tax tasks summary"
+    echo ""
+    echo -e "${BOLD}  MANAGE TASKS:${NC}"
+    echo -e "  ${BOLD}c)${NC} ${GREEN}Complete a task${NC} (with optional note)"
+    echo -e "  ${BOLD}a)${NC} ${GREEN}Add annotation${NC} to a task (multi-line)"
+    echo -e "  ${BOLD}v)${NC} ${GREEN}View task details${NC}"
+    echo ""
+    echo -e "${BOLD}  DASHBOARD & TRACKING:${NC}"
+    echo -e "  ${BOLD}d)${NC} ${CYAN}Tax Dashboard${NC} (overview & upcoming)"
+    echo -e "  ${BOLD}p)${NC} ${CYAN}Payment Tracker${NC} (estimated taxes)"
+    echo -e "  ${BOLD}r)${NC} ${CYAN}Reports${NC} (summaries & exports)"
+    echo ""
+    echo -e "${BOLD}  SETTINGS:${NC}"
+    echo -e "  ${BOLD}x)${NC} Configure Taskwarrior (remove Age column permanently)"
+    echo ""
+    echo -e "  ${BOLD}9)${NC} Help / Task Reference Guide"
+    echo -e "  ${BOLD}q)${NC} Quit"
+    echo ""
+    echo -n -e "${BOLD}Enter choice: ${NC}"
+}
+
+# =============================================================================
+#                           DASHBOARD FUNCTIONS
+# =============================================================================
+
+show_dashboard() {
+    clear
+    local today=$(date +%Y-%m-%d)
+    
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                        TAX DASHBOARD                                 ║"
+    echo "║                        $today                                   ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    # Overdue Tasks
+    echo -e "${RED}═══════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${RED}  ⚠  OVERDUE TASKS${NC}"
+    echo -e "${RED}═══════════════════════════════════════════════════════════════════════${NC}"
+    local overdue_count=$(task project:acc.tax +OVERDUE count 2>/dev/null)
+    if [ "$overdue_count" -gt 0 ] 2>/dev/null; then
+        task_list project:acc.tax +OVERDUE list 2>/dev/null
+    else
+        echo -e "  ${GREEN}✓ No overdue tasks! ${NC}"
+    fi
+    echo ""
+    
+    # Due This Week
+    echo -e "${YELLOW}═══════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${YELLOW}  📅 DUE THIS WEEK${NC}"
+    echo -e "${YELLOW}═══════════════════════════════════════════════════════════════════════${NC}"
+    local week_count=$(task project:acc.tax due.before:eow status:pending count 2>/dev/null)
+    if [ "$week_count" -gt 0 ] 2>/dev/null; then
+        task_list project:acc.tax due.before:eow status:pending list 2>/dev/null
+    else
+        echo -e "  ${GREEN}✓ Nothing due this week!${NC}"
+    fi
+    echo ""
+    
+    # Due This Month
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}  📆 DUE THIS MONTH${NC}"
+    echo -e "${CYAN}═══════════════════════════════════════════════════════════════════════${NC}"
+    local month_count=$(task project:acc.tax due.before:eom due.after:eow status:pending count 2>/dev/null)
+    if [ "$month_count" -gt 0 ] 2>/dev/null; then
+        task_list project:acc.tax due.before:eom due.after:eow status:pending list 2>/dev/null
+    else
+        echo -e "  ${GREEN}✓ Nothing else due this month!${NC}"
+    fi
+    echo ""
+    
+    # Summary Stats
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}  📊 SUMMARY${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    
+    local total_pending=$(task project:acc.tax status:pending count 2>/dev/null)
+    local total_completed=$(task project:acc.tax status:completed count 2>/dev/null)
+    local total=$((total_pending + total_completed))
+    
+    if [ "$total" -gt 0 ]; then
+        local pct_complete=$((total_completed * 100 / total))
+        echo -e "  Total Tasks:     $total"
+        echo -e "  Completed:       ${GREEN}$total_completed${NC}"
+        echo -e "  Pending:         ${YELLOW}$total_pending${NC}"
+        echo -e "  Progress:        ${GREEN}$pct_complete%${NC}"
+        echo ""
+        
+        # By Entity
+        echo -e "  ${BOLD}By Entity:${NC}"
+        local personal_pending=$(task project:acc.tax +personal status:pending count 2>/dev/null)
+        local bgs_pending=$(task project:acc.tax +bgs status:pending count 2>/dev/null)
+        local mhb_pending=$(task project:acc.tax +mhb status:pending count 2>/dev/null)
+        echo -e "    Personal:      $personal_pending pending"
+        echo -e "    BGS (S-Corp):  $bgs_pending pending"
+        echo -e "    MHB (LLC):     $mhb_pending pending"
+        echo ""
+        
+        # By Tax Year
+        echo -e "  ${BOLD}By Tax Year:${NC}"
+        for year in 2024 2025 2026; do
+            local year_pending=$(task project:acc.tax +ty${year} status:pending count 2>/dev/null)
+            local year_completed=$(task project:acc.tax +ty${year} status:completed count 2>/dev/null)
+            if [ "$year_pending" -gt 0 ] || [ "$year_completed" -gt 0 ] 2>/dev/null; then
+                echo -e "    $year:          $year_pending pending, $year_completed completed"
+            fi
+        done
+    else
+        echo -e "  ${YELLOW}No tasks found.Create tasks first!${NC}"
+    fi
+    
+    echo ""
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "${CYAN}Actions:${NC}"
+    echo "  c) Complete a task"
+    echo "  v) View task details"
+    echo "  r) Refresh dashboard"
+    echo "  Enter) Return to main menu"
+    echo ""
+    echo -n -e "${BOLD}Action: ${NC}"
+    read -r action
+    
+    case $action in
+        c|C) complete_task_with_note ;;
+        v|V) view_task_details ;;
+        r|R) show_dashboard ;;
+        *) ;;
+    esac
+}
+
+# =============================================================================
+#                           PAYMENT TRACKER
+# =============================================================================
+
+init_payment_tracker() {
+    if [[ !  -f "$PAYMENT_TRACKING_FILE" ]]; then
+        echo "date,tax_year,entity,payment_type,quarter,amount,confirmation,method,notes" > "$PAYMENT_TRACKING_FILE"
+    fi
+}
+
+show_payment_tracker() {
+    init_payment_tracker
+    
+    while true; do
+        clear
+        echo "╔══════════════════════════════════════════════════════════════════════╗"
+        echo "║                    ESTIMATED TAX PAYMENT TRACKER                     ║"
+        echo "╚══════════════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo -e "${YELLOW}Options:${NC}"
+        echo ""
+        echo -e "  ${BOLD}1)${NC} Record a new payment"
+        echo -e "  ${BOLD}2)${NC} View payment history"
+        echo -e "  ${BOLD}3)${NC} View payments by tax year"
+        echo -e "  ${BOLD}4)${NC} View payments by entity"
+        echo -e "  ${BOLD}5)${NC} Calculate estimated tax summary"
+        echo -e "  ${BOLD}6)${NC} Export payment history"
+        echo ""
+        echo -e "  ${BOLD}b)${NC} Back to main menu"
+        echo ""
+        echo -n -e "${BOLD}Choice: ${NC}"
+        read -r choice
+        
+        case $choice in
+            1) record_payment ;;
+            2) view_payment_history ;;
+            3) view_payments_by_year ;;
+            4) view_payments_by_entity ;;
+            5) calculate_estimated_summary ;;
+            6) export_payment_history ;;
+            b|B) return ;;
+            *) echo -e "${RED}Invalid option.${NC}"; sleep 1 ;;
+        esac
+    done
+}
+
+record_payment() {
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                      RECORD TAX PAYMENT                              ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    # Payment Date
+    echo -e "${CYAN}Payment Date (YYYY-MM-DD) [default: today]:${NC}"
+    echo -n -e "${BOLD}Date: ${NC}"
+    read -r payment_date
+    if [[ -z "$payment_date" ]]; then
+        payment_date=$(date +%Y-%m-%d)
+    fi
+    
+    # Tax Year
+    echo ""
+    echo -e "${CYAN}Tax Year:${NC}"
+    echo "  1) 2024    2) 2025    3) 2026"
+    echo -n -e "${BOLD}Choice: ${NC}"
+    read -r ty_choice
+    case $ty_choice in
+        1) tax_year="2024" ;;
+        2) tax_year="2025" ;;
+        3) tax_year="2026" ;;
+        *) tax_year="2025" ;;
+    esac
+    
+    # Entity
+    echo ""
+    echo -e "${CYAN}Entity:${NC}"
+    echo "  1) Personal (Frank Breen)"
+    echo "  2) BGS (Breen GeoScience Inc)"
+    echo "  3) MHB (MHB Properties LLC)"
+    echo -n -e "${BOLD}Choice: ${NC}"
+    read -r entity_choice
+    case $entity_choice in
+        1) entity="Personal" ;;
+        2) entity="BGS" ;;
+        3) entity="MHB" ;;
+        *) entity="Personal" ;;
+    esac
+    
+    # Payment Type
+    echo ""
+    echo -e "${CYAN}Payment Type:${NC}"
+    echo "  1) Federal Estimated (1040-ES)"
+    echo "  2) Michigan Estimated (MI-1040ES)"
+    echo "  3) Michigan FTE Estimated (Form 5778)"
+    echo "  4) Federal Payroll (941)"
+    echo "  5) FUTA (940)"
+    echo "  6) Michigan UIA"
+    echo "  7) Property Tax"
+    echo "  8) Other"
+    echo -n -e "${BOLD}Choice: ${NC}"
+    read -r type_choice
+    case $type_choice in
+        1) payment_type="Federal_Estimated_1040ES" ;;
+        2) payment_type="Michigan_Estimated_MI1040ES" ;;
+        3) payment_type="Michigan_FTE_5778" ;;
+        4) payment_type="Federal_Payroll_941" ;;
+        5) payment_type="FUTA_940" ;;
+        6) payment_type="Michigan_UIA" ;;
+        7) payment_type="Property_Tax" ;;
+        8) payment_type="Other" ;;
+        *) payment_type="Other" ;;
+    esac
+    
+    # Quarter
+    echo ""
+    echo -e "${CYAN}Quarter (if applicable):${NC}"
+    echo "  1) Q1    2) Q2    3) Q3    4) Q4    5) N/A (Annual)"
+    echo -n -e "${BOLD}Choice: ${NC}"
+    read -r quarter_choice
+    case $quarter_choice in
+        1) quarter="Q1" ;;
+        2) quarter="Q2" ;;
+        3) quarter="Q3" ;;
+        4) quarter="Q4" ;;
+        *) quarter="Annual" ;;
+    esac
+    
+    # Amount
+    echo ""
+    echo -n -e "${CYAN}Amount (numbers only, e.g., 3500.00): ${NC}"
+    read -r amount
+    
+    # Confirmation Number
+    echo ""
+    echo -n -e "${CYAN}Confirmation Number: ${NC}"
+    read -r confirmation
+    
+    # Payment Method
+    echo ""
+    echo -e "${CYAN}Payment Method:${NC}"
+    echo "  1) EFTPS"
+    echo "  2) Direct Pay (IRS)"
+    echo "  3) Michigan Treasury"
+    echo "  4) Check"
+    echo "  5) ACH/Bank Transfer"
+    echo "  6) Credit Card"
+    echo "  7) Other"
+    echo -n -e "${BOLD}Choice: ${NC}"
+    read -r method_choice
+    case $method_choice in
+        1) method="EFTPS" ;;
+        2) method="IRS_Direct_Pay" ;;
+        3) method="MI_Treasury" ;;
+        4) method="Check" ;;
+        5) method="ACH" ;;
+        6) method="Credit_Card" ;;
+        *) method="Other" ;;
+    esac
+    
+    # Notes
+    echo ""
+    echo -n -e "${CYAN}Notes (optional): ${NC}"
+    read -r notes
+    notes=$(echo "$notes" | tr ',' ';')
+    
+    # Confirm and save
+    echo ""
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BOLD}Payment Summary:${NC}"
+    echo -e "  Date:          $payment_date"
+    echo -e "  Tax Year:      $tax_year"
+    echo -e "  Entity:        $entity"
+    echo -e "  Type:          $payment_type"
+    echo -e "  Quarter:       $quarter"
+    echo -e "  Amount:        \$$amount"
+    echo -e "  Confirmation:  $confirmation"
+    echo -e "  Method:        $method"
+    echo -e "  Notes:         $notes"
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -n -e "${BOLD}Save this payment? (y/n): ${NC}"
+    read -r confirm
+    
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        echo "$payment_date,$tax_year,$entity,$payment_type,$quarter,$amount,$confirmation,$method,$notes" >> "$PAYMENT_TRACKING_FILE"
+        echo ""
+        echo -e "${GREEN}✓ Payment recorded successfully!${NC}"
+        
+        echo ""
+        echo -n -e "Mark related Taskwarrior task as complete? (y/n): "
+        read -r mark_complete
+        if [[ "$mark_complete" =~ ^[Yy]$ ]]; then
+            complete_task_with_note
+        fi
+    else
+        echo -e "${YELLOW}Payment not saved.${NC}"
+    fi
+    
+    echo ""
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+view_payment_history() {
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                      PAYMENT HISTORY                                 ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    if [[ -f "$PAYMENT_TRACKING_FILE" ]] && [[ $(wc -l < "$PAYMENT_TRACKING_FILE") -gt 1 ]]; then
+        echo -e "${CYAN}All Recorded Payments:${NC}"
+        echo ""
+        column -t -s',' "$PAYMENT_TRACKING_FILE" | head -1
+        echo "────────────────────────────────────────────────────────────────────────"
+        column -t -s',' "$PAYMENT_TRACKING_FILE" | tail -n +2
+        echo ""
+        
+        local total=$(tail -n +2 "$PAYMENT_TRACKING_FILE" | awk -F',' '{sum += $6} END {printf "%.2f", sum}')
+        echo -e "${BOLD}Total Payments: \$$total${NC}"
+    else
+        echo -e "${YELLOW}No payments recorded yet.${NC}"
+    fi
+    
+    echo ""
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+view_payments_by_year() {
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                    PAYMENTS BY TAX YEAR                              ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    for year in 2024 2025 2026; do
+        local year_total=$(tail -n +2 "$PAYMENT_TRACKING_FILE" 2>/dev/null | grep ",$year," | awk -F',' '{sum += $6} END {printf "%.2f", sum}')
+        local year_count=$(tail -n +2 "$PAYMENT_TRACKING_FILE" 2>/dev/null | grep -c ",$year," 2>/dev/null || echo "0")
+        
+        if [[ "$year_count" -gt 0 ]]; then
+            echo -e "${CYAN}Tax Year $year:${NC}"
+            echo -e "  Payments: $year_count"
+            echo -e "  Total:    \$$year_total"
+            echo ""
+            tail -n +2 "$PAYMENT_TRACKING_FILE" | grep ",$year," | column -t -s','
+            echo ""
+        fi
+    done
+    
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+view_payments_by_entity() {
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                    PAYMENTS BY ENTITY                                ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    for entity in "Personal" "BGS" "MHB"; do
+        local entity_total=$(tail -n +2 "$PAYMENT_TRACKING_FILE" 2>/dev/null | grep ",$entity," | awk -F',' '{sum += $6} END {printf "%.2f", sum}')
+        local entity_count=$(tail -n +2 "$PAYMENT_TRACKING_FILE" 2>/dev/null | grep -c ",$entity," 2>/dev/null || echo "0")
+        
+        if [[ "$entity_count" -gt 0 ]]; then
+            echo -e "${CYAN}$entity:${NC}"
+            echo -e "  Payments: $entity_count"
+            echo -e "  Total:    \$$entity_total"
+            echo ""
+            tail -n +2 "$PAYMENT_TRACKING_FILE" | grep ",$entity," | column -t -s','
+            echo ""
+        fi
+    done
+    
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+calculate_estimated_summary() {
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                 ESTIMATED TAX PAYMENT SUMMARY                        ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    echo -e "${CYAN}Enter tax year to summarize:${NC}"
+    echo -n -e "${BOLD}Tax Year: ${NC}"
+    read -r tax_year
+    
+    echo ""
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BOLD}Tax Year $tax_year Estimated Payment Summary${NC}"
+    echo -e "${BLUE}═══════════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    
+    # Federal Personal
+    echo -e "${YELLOW}FEDERAL PERSONAL (Form 1040-ES):${NC}"
+    for q in Q1 Q2 Q3 Q4; do
+        local amt=$(tail -n +2 "$PAYMENT_TRACKING_FILE" 2>/dev/null | grep ",$tax_year,Personal,Federal_Estimated_1040ES,$q," | awk -F',' '{sum += $6} END {printf "%.2f", sum}')
+        if [[ "$amt" != "0.00" ]] && [[ -n "$amt" ]] && [[ "$amt" != "0" ]]; then
+            echo -e "  $q: \$$amt"
+        else
+            echo -e "  $q: ${RED}Not paid${NC}"
+        fi
+    done
+    local fed_total=$(tail -n +2 "$PAYMENT_TRACKING_FILE" 2>/dev/null | grep ",$tax_year,Personal,Federal_Estimated_1040ES," | awk -F',' '{sum += $6} END {printf "%.2f", sum}')
+    echo -e "  ${BOLD}Total: \$$fed_total${NC}"
+    echo ""
+    
+    # Michigan Personal
+    echo -e "${YELLOW}MICHIGAN PERSONAL (MI-1040ES):${NC}"
+    for q in Q1 Q2 Q3 Q4; do
+        local amt=$(tail -n +2 "$PAYMENT_TRACKING_FILE" 2>/dev/null | grep ",$tax_year,Personal,Michigan_Estimated_MI1040ES,$q," | awk -F',' '{sum += $6} END {printf "%.2f", sum}')
+        if [[ "$amt" != "0.00" ]] && [[ -n "$amt" ]] && [[ "$amt" != "0" ]]; then
+            echo -e "  $q: \$$amt"
+        else
+            echo -e "  $q: ${RED}Not paid${NC}"
+        fi
+    done
+    local mi_total=$(tail -n +2 "$PAYMENT_TRACKING_FILE" 2>/dev/null | grep ",$tax_year,Personal,Michigan_Estimated_MI1040ES," | awk -F',' '{sum += $6} END {printf "%.2f", sum}')
+    echo -e "  ${BOLD}Total: \$$mi_total${NC}"
+    echo ""
+    
+    # BGS FTE
+    echo -e "${YELLOW}BGS MICHIGAN FTE (Form 5778):${NC}"
+    for q in Q1 Q2 Q3 Q4; do
+        local amt=$(tail -n +2 "$PAYMENT_TRACKING_FILE" 2>/dev/null | grep ",$tax_year,BGS,Michigan_FTE_5778,$q," | awk -F',' '{sum += $6} END {printf "%.2f", sum}')
+        if [[ "$amt" != "0.00" ]] && [[ -n "$amt" ]] && [[ "$amt" != "0" ]]; then
+            echo -e "  $q: \$$amt"
+        else
+            echo -e "  $q: ${RED}Not paid${NC}"
+        fi
+    done
+    local bgs_fte_total=$(tail -n +2 "$PAYMENT_TRACKING_FILE" 2>/dev/null | grep ",$tax_year,BGS,Michigan_FTE_5778," | awk -F',' '{sum += $6} END {printf "%.2f", sum}')
+    echo -e "  ${BOLD}Total: \$$bgs_fte_total${NC}"
+    echo ""
+    
+    # MHB FTE
+    echo -e "${YELLOW}MHB MICHIGAN FTE (Form 5778):${NC}"
+    for q in Q1 Q2 Q3 Q4; do
+        local amt=$(tail -n +2 "$PAYMENT_TRACKING_FILE" 2>/dev/null | grep ",$tax_year,MHB,Michigan_FTE_5778,$q," | awk -F',' '{sum += $6} END {printf "%.2f", sum}')
+        if [[ "$amt" != "0.00" ]] && [[ -n "$amt" ]] && [[ "$amt" != "0" ]]; then
+            echo -e "  $q: \$$amt"
+        else
+            echo -e "  $q: ${RED}Not paid${NC}"
+        fi
+    done
+    local mhb_fte_total=$(tail -n +2 "$PAYMENT_TRACKING_FILE" 2>/dev/null | grep ",$tax_year,MHB,Michigan_FTE_5778," | awk -F',' '{sum += $6} END {printf "%.2f", sum}')
+    echo -e "  ${BOLD}Total: \$$mhb_fte_total${NC}"
+    echo ""
+    
+    echo -e "${GREEN}═══════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}  ALL ESTIMATED PAYMENTS ($tax_year)${NC}"
+    echo -e "${GREEN}═══════════════════════════════════════════════════════════════════════${NC}"
+    
+    echo ""
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+export_payment_history() {
+    local export_file=~/tax_payments_export_$(date +%Y%m%d_%H%M%S).csv
+    cp "$PAYMENT_TRACKING_FILE" "$export_file"
+    echo ""
+    echo -e "${GREEN}✓ Payment history exported to: $export_file${NC}"
+    echo ""
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+# =============================================================================
+#                           REPORTS
+# =============================================================================
+
+show_reports() {
+    while true; do
+        clear
+        echo "╔══════════════════════════════════════════════════════════════════════╗"
+        echo "║                          REPORTS                                     ║"
+        echo "╚══════════════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo -e "${YELLOW}Available Reports:${NC}"
+        echo ""
+        echo -e "  ${BOLD}1)${NC} Upcoming Deadlines (next 30 days)"
+        echo -e "  ${BOLD}2)${NC} Quarterly Filing Status"
+        echo -e "  ${BOLD}3)${NC} Annual Return Status"
+        echo -e "  ${BOLD}4)${NC} Property Tax Status"
+        echo -e "  ${BOLD}5)${NC} Employer Tax Status"
+        echo -e "  ${BOLD}6)${NC} Document Collection Status"
+        echo -e "  ${BOLD}7)${NC} Export All Tasks to File"
+        echo -e "  ${BOLD}8)${NC} Calendar View"
+        echo ""
+        echo -e "  ${BOLD}b)${NC} Back to main menu"
+        echo ""
+        echo -n -e "${BOLD}Choice: ${NC}"
+        read -r choice
+        
+        case $choice in
+            1) report_upcoming_deadlines ;;
+            2) report_quarterly_status ;;
+            3) report_annual_status ;;
+            4) report_property_tax_status ;;
+            5) report_employer_tax_status ;;
+            6) report_document_status ;;
+            7) export_all_tasks ;;
+            8) show_calendar ;;
+            b|B) return ;;
+            *) echo -e "${RED}Invalid option.${NC}"; sleep 1 ;;
+        esac
+    done
+}
+
+report_upcoming_deadlines() {
+    clear
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║               UPCOMING DEADLINES (Next 30 Days)                      ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    task_list project:acc.tax due.before:30d status:pending list
+    
+    echo ""
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+report_quarterly_status() {
+    clear
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                   QUARTERLY FILING STATUS                            ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    for year in 2024 2025 2026; do
+        local has_tasks=$(task +ty${year} +quarterly count 2>/dev/null)
+        if [[ "$has_tasks" -gt 0 ]]; then
+            echo -e "${CYAN}Tax Year $year:${NC}"
+            echo ""
+            for q in Q1 Q2 Q3 Q4; do
+                local pending=$(task +ty${year} +${q} status:pending count 2>/dev/null)
+                local completed=$(task +ty${year} +${q} status:completed count 2>/dev/null)
+                local total=$((pending + completed))
+                if [[ "$total" -gt 0 ]]; then
+                    echo -e "  $q: ${GREEN}$completed completed${NC}, ${YELLOW}$pending pending${NC}"
+                fi
+            done
+            echo ""
+        fi
+    done
+    
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+report_annual_status() {
+    clear
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                    ANNUAL RETURN STATUS                              ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    echo -e "${CYAN}Annual Returns (Forms 1040, 1120-S, 1065):${NC}"
+    echo ""
+    task_list project:acc.tax +annual +return list 2>/dev/null
+    
+    echo ""
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+report_property_tax_status() {
+    clear
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                   PROPERTY TAX STATUS                                ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    for prop in "905brown" "711pine" "819helen"; do
+        echo -e "${CYAN}Property: $prop${NC}"
+        task_list project:acc.tax +${prop} +propertytax list 2>/dev/null
+        echo ""
+    done
+    
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+report_employer_tax_status() {
+    clear
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                   EMPLOYER TAX STATUS                                ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    echo -e "${CYAN}Payroll Taxes (Form 941):${NC}"
+    task_list project:acc.tax +form941 list 2>/dev/null
+    echo ""
+    
+    echo -e "${CYAN}Michigan UIA:${NC}"
+    task_list project:acc.tax +UIA list 2>/dev/null
+    echo ""
+    
+    echo -e "${CYAN}Annual Employer Forms (W-2, 940):${NC}"
+    task_list project:acc.tax +employer +annual list 2>/dev/null
+    
+    echo ""
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+report_document_status() {
+    clear
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                 DOCUMENT COLLECTION STATUS                           ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    task_list project:acc.tax +documents list 2>/dev/null
+    
+    echo ""
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+export_all_tasks() {
+    local export_file=~/tax_tasks_export_$(date +%Y%m%d_%H%M%S)
+    
+    echo ""
+    echo -e "${CYAN}Export format:${NC}"
+    echo "  1) Text (human readable)"
+    echo "  2) JSON (for import/backup)"
+    echo "  3) Both"
+    echo -n -e "${BOLD}Choice: ${NC}"
+    read -r format
+    
+    case $format in
+        1)
+            task_list project:acc.tax list > "${export_file}.txt"
+            echo -e "${GREEN}✓ Exported to: ${export_file}.txt${NC}"
+            ;;
+        2)
+            task project:acc.tax export > "${export_file}.json"
+            echo -e "${GREEN}✓ Exported to: ${export_file}.json${NC}"
+            ;;
+        3)
+            task_list project:acc.tax list > "${export_file}.txt"
+            task project:acc.tax export > "${export_file}.json"
+            echo -e "${GREEN}✓ Exported to: ${export_file}.txt and ${export_file}.json${NC}"
+            ;;
+        *)
+            echo -e "${YELLOW}Export cancelled.${NC}"
+            ;;
+    esac
+    
+    echo ""
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+show_calendar() {
+    clear
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                      TAX CALENDAR VIEW                               ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    task project:acc.tax calendar
+    
+    echo ""
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+# =============================================================================
+#                           ANNOTATION FUNCTIONS
+# =============================================================================
+
+add_multiline_annotation() {
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                    ADD ANNOTATION TO TASK                            ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    echo -n -e "${BOLD}Enter Task ID: ${NC}"
+    read -r task_id
+    
+    if [[ -z "$task_id" ]]; then
+        echo -e "${RED}No task ID entered.${NC}"
+        sleep 1
+        return
+    fi
+    
+    echo ""
+    echo -e "${CYAN}Task Details:${NC}"
+    echo "--------------------------------------------------------------"
+    if !  task "$task_id" info 2>/dev/null; then
+        echo -e "${RED}Task $task_id not found.${NC}"
+        echo ""
+        echo -n "Press Enter to continue..."
+        read -r
+        return
+    fi
+    
+    echo ""
+    echo "--------------------------------------------------------------"
+    echo -e "${CYAN}Enter your annotation (multi-line supported):${NC}"
+    echo -e "${YELLOW}  - Type your note, pressing Enter for new lines${NC}"
+    echo -e "${YELLOW}  - Enter a blank line when finished${NC}"
+    echo -e "${YELLOW}  - Type 'cancel' on a new line to abort${NC}"
+    echo "--------------------------------------------------------------"
+    echo ""
+    
+    local annotation=""
+    local line_num=1
+    
+    while true; do
+        echo -n -e "${BOLD}[$line_num]: ${NC}"
+        read -r line
+        
+        if [[ "$line" == "cancel" ]]; then
+            echo -e "${YELLOW}Annotation cancelled.${NC}"
+            echo ""
+            echo -n "Press Enter to continue..."
+            read -r
+            return
+        fi
+        
+        if [[ -z "$line" ]]; then
+            break
+        fi
+        
+        if [[ -n "$annotation" ]]; then
+            annotation="${annotation} | ${line}"
+        else
+            annotation="$line"
+        fi
+        
+        ((line_num++))
+    done
+    
+    if [[ -z "$annotation" ]]; then
+        echo -e "${YELLOW}No annotation entered.${NC}"
+        echo ""
+        echo -n "Press Enter to continue..."
+        read -r
+        return
+    fi
+    
+    local timestamp=$(date "+%Y-%m-%d %H:%M")
+    local full_annotation="[$timestamp] $annotation"
+    
+    echo ""
+    echo -e "${CYAN}Annotation Preview:${NC}"
+    echo "--------------------------------------------------------------"
+    echo "$full_annotation"
+    echo "--------------------------------------------------------------"
+    echo ""
+    echo -n -e "${BOLD}Add this annotation? (y/n): ${NC}"
+    read -r confirm
+    
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        if task "$task_id" annotate "$full_annotation" 2>/dev/null; then
+            echo ""
+            echo -e "${GREEN}✓ Annotation added successfully! ${NC}"
+        else
+            echo ""
+            echo -e "${RED}✗ Failed to add annotation.${NC}"
+        fi
+    else
+        echo -e "${YELLOW}Annotation cancelled.${NC}"
+    fi
+    
+    echo ""
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+complete_task_with_note() {
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                      COMPLETE A TASK                                 ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    echo -n -e "${BOLD}Enter Task ID to complete: ${NC}"
+    read -r task_id
+    
+    if [[ -z "$task_id" ]]; then
+        echo -e "${RED}No task ID entered.${NC}"
+        sleep 1
+        return
+    fi
+    
+    echo ""
+    echo -e "${CYAN}Task to Complete:${NC}"
+    echo "--------------------------------------------------------------"
+    if ! task "$task_id" info 2>/dev/null; then
+        echo -e "${RED}Task $task_id not found.${NC}"
+        echo ""
+        echo -n "Press Enter to continue..."
+        read -r
+        return
+    fi
+    
+    echo ""
+    echo "--------------------------------------------------------------"
+    echo ""
+    
+    echo -e "${CYAN}Add a completion note? (recommended for tax tasks)${NC}"
+    echo -e "${YELLOW}Examples:${NC}"
+    echo "  - Paid \$3,200 via EFTPS, confirmation #EFT-2025-0415"
+    echo "  - E-filed via TurboTax, confirmation DCN: 12345678901234"
+    echo "  - Mailed certified, tracking #9400111899223334445566"
+    echo ""
+    echo -e "${CYAN}Enter completion note (multi-line, blank line to finish):${NC}"
+    echo "--------------------------------------------------------------"
+    echo ""
+    
+    local annotation=""
+    local line_num=1
+    
+    while true; do
+        echo -n -e "${BOLD}[$line_num]: ${NC}"
+        read -r line
+        
+        if [[ -z "$line" ]]; then
+            break
+        fi
+        
+        if [[ -n "$annotation" ]]; then
+            annotation="${annotation} | ${line}"
+        else
+            annotation="$line"
+        fi
+        
+        ((line_num++))
+    done
+    
+    echo ""
+    if [[ -n "$annotation" ]]; then
+        local timestamp=$(date "+%Y-%m-%d %H:%M")
+        local full_annotation="[COMPLETED $timestamp] $annotation"
+        
+        echo -e "${CYAN}Completion Note:${NC}"
+        echo "--------------------------------------------------------------"
+        echo "$full_annotation"
+        echo "--------------------------------------------------------------"
+    fi
+    
+    echo ""
+    echo -n -e "${BOLD}Mark task $task_id as complete? (y/n): ${NC}"
+    read -r confirm
+    
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        if [[ -n "$annotation" ]]; then
+            task "$task_id" annotate "$full_annotation" 2>/dev/null
+        fi
+        
+        if task "$task_id" done 2>/dev/null; then
+            echo ""
+            echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${GREEN}  ✓ Task $task_id completed successfully!${NC}"
+            echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"
+        else
+            echo ""
+            echo -e "${RED}✗ Failed to complete task.${NC}"
+        fi
+    else
+        echo -e "${YELLOW}Task completion cancelled.${NC}"
+    fi
+    
+    echo ""
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+view_task_details() {
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                      VIEW TASK DETAILS                               ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    
+    echo -n -e "${BOLD}Enter Task ID: ${NC}"
+    read -r task_id
+    
+    if [[ -z "$task_id" ]]; then
+        echo -e "${RED}No task ID entered.${NC}"
+        sleep 1
+        return
+    fi
+    
+    echo ""
+    echo -e "${CYAN}Task Details:${NC}"
+    echo "══════════════════════════════════════════════════════════════════════"
+    
+    if ! task "$task_id" info 2>/dev/null; then
+        echo -e "${RED}Task $task_id not found.${NC}"
+        echo ""
+        echo -n "Press Enter to continue..."
+        read -r
+        return
+    fi
+    
+    echo ""
+    echo -e "${CYAN}Actions:${NC}"
+    echo "  c) Complete this task"
+    echo "  a) Add annotation"
+    echo "  e) Edit task"
+    echo "  d) Delete task"
+    echo "  Enter) Return to menu"
+    echo ""
+    echo -n -e "${BOLD}Action: ${NC}"
+    read -r action
+    
+    case $action in
+        c|C)
+            if [[ -n "$task_id" ]]; then
+                echo ""
+                echo -e "${CYAN}Enter completion note (blank line to finish):${NC}"
+                local annotation=""
+                local line_num=1
+                while true; do
+                    echo -n -e "${BOLD}[$line_num]: ${NC}"
+                    read -r line
+                    if [[ -z "$line" ]]; then break; fi
+                    if [[ -n "$annotation" ]]; then
+                        annotation="${annotation} | ${line}"
+                    else
+                        annotation="$line"
+                    fi
+                    ((line_num++))
+                done
+                if [[ -n "$annotation" ]]; then
+                    local timestamp=$(date "+%Y-%m-%d %H:%M")
+                    task "$task_id" annotate "[COMPLETED $timestamp] $annotation" 2>/dev/null
+                fi
+                task "$task_id" done 2>/dev/null
+                echo -e "${GREEN}✓ Task completed! ${NC}"
+            fi
+            echo -n "Press Enter to continue..."
+            read -r
+            ;;
+        a|A)
+            if [[ -n "$task_id" ]]; then
+                echo ""
+                echo -e "${CYAN}Enter annotation (blank line to finish):${NC}"
+                local annotation=""
+                local line_num=1
+                while true; do
+                    echo -n -e "${BOLD}[$line_num]: ${NC}"
+                    read -r line
+                    if [[ -z "$line" ]]; then break; fi
+                    if [[ -n "$annotation" ]]; then
+                        annotation="${annotation} | ${line}"
+                    else
+                        annotation="$line"
+                    fi
+                    ((line_num++))
+                done
+                if [[ -n "$annotation" ]]; then
+                    local timestamp=$(date "+%Y-%m-%d %H:%M")
+                    task "$task_id" annotate "[$timestamp] $annotation" 2>/dev/null
+                    echo -e "${GREEN}✓ Annotation added!${NC}"
+                fi
+            fi
+            echo -n "Press Enter to continue..."
+            read -r
+            ;;
+        e|E)
+            task "$task_id" edit
+            echo -n "Press Enter to continue..."
+            read -r
+            ;;
+        d|D)
+            echo -n -e "${RED}Are you sure you want to delete task $task_id? (y/n): ${NC}"
+            read -r confirm
+            if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                task "$task_id" delete
+            fi
+            echo -n "Press Enter to continue..."
+            read -r
+            ;;
+        *) ;;
+    esac
+}
+
+# =============================================================================
+#                           SEARCH FUNCTIONS
+# =============================================================================
+
+search_tasks() {
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                         TASK SEARCH                                  ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    echo -e "${CYAN}Search examples:${NC}"
+    echo "  UIA                    - Tasks containing 'UIA'"
+    echo "  +michigan +UIA         - Michigan UIA tasks (by tags)"
+    echo "  +form941               - All 941 payroll tax tasks"
+    echo "  +estimated +Q1         - Q1 estimated payments"
+    echo "  due.before:eom         - Due before end of month"
+    echo ""
+    echo -e "  Enter ${BOLD}'b'${NC} to go back"
+    echo ""
+    echo -n -e "${BOLD}Search: ${NC}"
+    read -r search_query
+    
+    if [[ "$search_query" == "b" ]] || [[ "$search_query" == "B" ]]; then
+        return
+    fi
+    
+    if [[ -z "$search_query" ]]; then
+        echo -e "${RED}No search query entered.${NC}"
+        sleep 1
+        return
+    fi
+    
+    echo ""
+    echo -e "${BLUE}════════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}  Search Results for: ${NC}${BOLD}$search_query${NC}"
+    echo -e "${BLUE}════════════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    
+    if [[ "$search_query" =~ ^\+ ]] || [[ "$search_query" =~ due ]] || [[ "$search_query" =~ project: ]]; then
+        task_list project:acc.tax $search_query list 2>/dev/null
+    else
+        task_list project:acc.tax description.contains:"$search_query" list 2>/dev/null
+    fi
+    
+    echo ""
+    echo -e "${CYAN}Actions:${NC}"
+    echo "  c) Complete a task"
+    echo "  a) Add annotation"
+    echo "  v) View details"
+    echo "  Enter) Return"
+    echo ""
+    echo -n -e "${BOLD}Action: ${NC}"
+    read -r action
+    
+    case $action in
+        c|C) complete_task_with_note ;;
+        a|A) add_multiline_annotation ;;
+        v|V) view_task_details ;;
+        *) ;;
+    esac
+}
+
+search_presets() {
+    while true; do
+        clear
+        echo "╔══════════════════════════════════════════════════════════════════════╗"
+        echo "║                      QUICK SEARCH PRESETS                            ║"
+        echo "╚══════════════════════════════════════════════════════════════════════╝"
+        echo ""
+        echo -e "${YELLOW}By Tax Type:${NC}"
+        echo "  1) Payroll (941, W-2, FUTA)    2) Estimated payments"
+        echo "  3) Michigan UIA               4) Michigan withholding"
+        echo "  5) Property taxes             6) 1099 reporting"
+        echo ""
+        echo -e "${YELLOW}By Entity:${NC}"
+        echo "  10) Personal    11) BGS    12) MHB"
+        echo "  13) 905 Brown   14) 711 Pine   15) 819 Helen"
+        echo ""
+        echo -e "${YELLOW}By Due Date:${NC}"
+        echo "  20) Overdue    21) Due today    22) Due this week"
+        echo "  23) Due this month    24) Due this quarter"
+        echo ""
+        echo -e "${YELLOW}By Quarter:${NC}"
+        echo "  30) Q1    31) Q2    32) Q3    33) Q4"
+        echo ""
+        echo -e "${YELLOW}By Tax Year:${NC}"
+        echo "  40) 2024    41) 2025    42) 2026"
+        echo ""
+        echo "  b) Back"
+        echo ""
+        echo -n -e "${BOLD}Choice: ${NC}"
+        read -r preset
+        
+        case $preset in
+            1)  run_search "+form941 or +W2 or +FUTA" "Payroll Taxes" ;;
+            2)  run_search "+estimated" "Estimated Payments" ;;
+            3)  run_search "+UIA" "Michigan UIA" ;;
+            4)  run_search "+withholding +michigan" "Michigan Withholding" ;;
+            5)  run_search "+propertytax" "Property Taxes" ;;
+            6)  run_search "+1099" "1099 Reporting" ;;
+            10) run_search "+personal" "Personal" ;;
+            11) run_search "+bgs" "BGS" ;;
+            12) run_search "+mhb" "MHB" ;;
+            13) run_search "+905brown" "905 Brown" ;;
+            14) run_search "+711pine" "711 Pine" ;;
+            15) run_search "+819helen" "819 Helen" ;;
+            20) run_search "+OVERDUE" "Overdue" ;;
+            21) run_search "due:today" "Due Today" ;;
+            22) run_search "due.before:eow" "Due This Week" ;;
+            23) run_search "due.before:eom" "Due This Month" ;;
+            24) run_search "due.before:eoq" "Due This Quarter" ;;
+            30) run_search "+Q1" "Q1" ;;
+            31) run_search "+Q2" "Q2" ;;
+            32) run_search "+Q3" "Q3" ;;
+            33) run_search "+Q4" "Q4" ;;
+            40) run_search "+ty2024" "2024" ;;
+            41) run_search "+ty2025" "2025" ;;
+            42) run_search "+ty2026" "2026" ;;
+            b|B) return ;;
+            *) ;;
+        esac
+    done
+}
+
+run_search() {
+    local query="$1"
+    local title="$2"
+    
+    clear
+    echo -e "${BLUE}  $title: task project:acc.tax $query list${NC}"
+    echo ""
+    task_list project:acc.tax $query list 2>/dev/null
+    echo ""
+    echo -n "Press Enter to continue..."
+    read -r
+}
+
+# =============================================================================
+#                           YEAR/DATE FUNCTIONS
+# =============================================================================
+
+get_single_year() {
+    echo ""
+    echo -n -e "${CYAN}Enter tax year (e.g., 2025): ${NC}"
+    read -r year
+    if [[ "$year" =~ ^[0-9]{4}$ ]] && [ "$year" -ge 2020 ] && [ "$year" -le 2030 ]; then
+        SELECTED_YEARS=("$year")
+        return 0
+    else
+        echo -e "${RED}Invalid year.${NC}"
+        return 1
+    fi
+}
+
+get_year_range() {
+    echo ""
+    echo -n -e "${CYAN}Start year: ${NC}"
+    read -r start_year
+    echo -n -e "${CYAN}End year: ${NC}"
+    read -r end_year
+    
+    if [[ "$start_year" =~ ^[0-9]{4}$ ]] && [[ "$end_year" =~ ^[0-9]{4}$ ]] && \
+       [ "$start_year" -le "$end_year" ]; then
+        SELECTED_YEARS=()
+        for ((year=start_year; year<=end_year; year++)); do
+            SELECTED_YEARS+=("$year")
+        done
+        return 0
+    else
+        echo -e "${RED}Invalid range.${NC}"
+        return 1
+    fi
+}
+
+get_start_date() {
+    echo ""
+    echo -n -e "${CYAN}Start date (YYYY-MM-DD): ${NC}"
+    read -r start_date
+    
+    if [[ "$start_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+        START_DATE="$start_date"
+        START_YEAR="${start_date:0:4}"
+        
+        echo -n -e "${CYAN}Number of years (1-5): ${NC}"
+        read -r num_years
+        
+        if [[ "$num_years" =~ ^[1-5]$ ]]; then
+            SELECTED_YEARS=()
+            for ((i=0; i<num_years; i++)); do
+                SELECTED_YEARS+=("$((START_YEAR + i))")
+            done
+            USE_START_DATE=true
+            return 0
+        fi
+    fi
+    echo -e "${RED}Invalid input.${NC}"
+    return 1
+}
+
+get_current_year() {
+    CURRENT_YEAR=$(date +%Y)
+    CURRENT_MONTH=$(date +%m)
+    if [ "$CURRENT_MONTH" -lt 4 ]; then
+        TAX_YEAR=$((CURRENT_YEAR - 1))
+    else
+        TAX_YEAR=$CURRENT_YEAR
+    fi
+    SELECTED_YEARS=("$TAX_YEAR")
+    echo -e "${GREEN}Auto-detected: $TAX_YEAR${NC}"
+}
+
+show_existing_tasks() {
+    echo ""
+    echo -e "${CYAN}Tax Task Summary:${NC}"
+    echo ""
+    echo -n "  Total: "; task project:acc.tax count 2>/dev/null
+    echo -n "  Pending: "; task project:acc.tax status:pending count 2>/dev/null
+    echo -n "  Completed: "; task project:acc.tax status:completed count 2>/dev/null
+    echo ""
+    echo -n "Press Enter..."
+    read -r
+}
+
+show_help() {
+    clear
+    echo "╔══════════════════════════════════════════════════════════════════════╗"
+    echo "║                       QUICK REFERENCE                                ║"
+    echo "╚══════════════════════════════════════════════════════════════════════╝"
+    echo ""
+    echo -e "${YELLOW}View by:${NC}"
+    echo "  task +ty2025 list          # Tax year"
+    echo "  task +bgs list             # Entity"
+    echo "  task +905brown list        # Property"
+    echo "  task +Q1 list              # Quarter"
+    echo "  task +form941 list         # Form"
+    echo "  task due.before:eom list   # Due date"
+    echo ""
+    echo -e "${YELLOW}Manage:${NC}"
+    echo "  task <ID> done             # Complete"
+    echo "  task <ID> annotate \"note\"  # Add note"
+    echo "  task <ID> info             # View details"
+    echo "  task <ID> edit             # Edit task"
+    echo "  task <ID> delete           # Delete task"
+    echo ""
+    echo -e "${YELLOW}Common Searches:${NC}"
+    echo "  task +OVERDUE list         # Overdue tasks"
+    echo "  task +estimated list       # Estimated payments"
+    echo "  task +UIA list             # Michigan UIA"
+    echo "  task +employer list        # Payroll taxes"
+    echo "  task +propertytax list     # Property taxes"
+    echo ""
+    echo -n "Press Enter..."
+    read -r
+}
+
+confirm_creation() {
+    echo ""
+    echo -e "${BOLD}Creating tasks for:${NC}"
+    for year in "${SELECTED_YEARS[@]}"; do
+        echo -e "  Tax Year $year"
+    done
+    if [ "$USE_START_DATE" = true ]; then
+        echo -e "  Start: $START_DATE"
+    fi
+    echo ""
+    echo -n -e "${BOLD}Proceed? (y/n): ${NC}"
+    read -r confirm
+    [[ "$confirm" =~ ^[Yy]$ ]]
+}
+
+# =============================================================================
+#                           TASK CREATION
+# =============================================================================
+
+should_create_task() {
+    local due_date="$1"
+    if [ "$USE_START_DATE" != true ]; then return 0; fi
+    [[ "$due_date" > "$START_DATE" ]] || [[ "$due_date" == "$START_DATE" ]]
+}
+
+add_task() {
+    local description="$1"
+    local due="$2"
+    local subproject="$3"
+    local priority="$4"
+    local tags="$5"
+    
+    if !  should_create_task "$due"; then
+        ((SKIPPED_COUNT++))
+        return 0
+    fi
+    
+    local full_project="${PROJECT}.${subproject}"
+    local cmd="task add \"$description\" project:${full_project} priority:$priority $tags due:$due"
+    if eval $cmd > /dev/null 2>&1; then
+        echo -e "  ${GREEN}✓${NC} $description"
+        ((CREATED_COUNT++))
+    else
+        echo -e "  ${RED}✗${NC} $description"
+        ((FAILED_COUNT++))
+    fi
+}
+
+create_tasks_for_year() {
+    local TAX_YEAR=$1
+    local FILING_YEAR=$((TAX_YEAR + 1))
+    
+    echo ""
+    echo -e "${BLUE}══════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${BLUE}  Creating Tasks for Tax Year: $TAX_YEAR${NC}"
+    echo -e "${BLUE}══════════════════════════════════════════════════════════════════════${NC}"
+
+    # PERSONAL TAXES
+    echo ""
+    echo -e "${YELLOW}▶ PERSONAL - $PERSONAL${NC}"
+
+    add_task "$PERSONAL: File $TAX_YEAR Federal Return (1040)" "${FILING_YEAR}-04-15" "personal.federal" "H" "+personal +federal +form1040 +annual +return +irs +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: File $TAX_YEAR Federal Extension (4868)" "${FILING_YEAR}-04-15" "personal.federal" "M" "+personal +federal +form4868 +extension +irs +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: $TAX_YEAR Federal Q1 Estimated" "${TAX_YEAR}-04-15" "personal.federal.estimated" "H" "+personal +federal +form1040ES +estimated +quarterly +Q1 +payment +irs +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: $TAX_YEAR Federal Q2 Estimated" "${TAX_YEAR}-06-15" "personal.federal.estimated" "H" "+personal +federal +form1040ES +estimated +quarterly +Q2 +payment +irs +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: $TAX_YEAR Federal Q3 Estimated" "${TAX_YEAR}-09-15" "personal.federal.estimated" "H" "+personal +federal +form1040ES +estimated +quarterly +Q3 +payment +irs +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: $TAX_YEAR Federal Q4 Estimated" "${FILING_YEAR}-01-15" "personal.federal.estimated" "H" "+personal +federal +form1040ES +estimated +quarterly +Q4 +payment +irs +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: File $TAX_YEAR Michigan Return (MI-1040)" "${FILING_YEAR}-04-15" "personal.michigan" "H" "+personal +michigan +state +MI1040 +annual +return +treasury +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: File $TAX_YEAR Michigan Homestead Credit" "${FILING_YEAR}-04-15" "personal.michigan" "M" "+personal +michigan +state +MI1040CR +credit +propertytax +homestead +treasury +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: $TAX_YEAR Michigan Q1 Estimated" "${TAX_YEAR}-04-15" "personal.michigan.estimated" "H" "+personal +michigan +state +MI1040ES +estimated +quarterly +Q1 +payment +treasury +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: $TAX_YEAR Michigan Q2 Estimated" "${TAX_YEAR}-06-15" "personal.michigan.estimated" "H" "+personal +michigan +state +MI1040ES +estimated +quarterly +Q2 +payment +treasury +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: $TAX_YEAR Michigan Q3 Estimated" "${TAX_YEAR}-09-15" "personal.michigan.estimated" "H" "+personal +michigan +state +MI1040ES +estimated +quarterly +Q3 +payment +treasury +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: $TAX_YEAR Michigan Q4 Estimated" "${FILING_YEAR}-01-15" "personal.michigan.estimated" "H" "+personal +michigan +state +MI1040ES +estimated +quarterly +Q4 +payment +treasury +fbreen +ty${TAX_YEAR}"
+
+    # BGS S-CORP
+    echo ""
+    echo -e "${YELLOW}▶ S-CORP - $SCORP${NC}"
+
+    add_task "$SCORP: File $TAX_YEAR Federal S-Corp Return (1120-S)" "${FILING_YEAR}-03-15" "bgs.federal" "H" "+scorp +federal +form1120S +annual +return +irs +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: Issue $TAX_YEAR Schedule K-1" "${FILING_YEAR}-03-15" "bgs.federal" "H" "+scorp +federal +K1 +scheduleK1 +shareholder +irs +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: File $TAX_YEAR Federal Extension (7004)" "${FILING_YEAR}-03-15" "bgs.federal" "M" "+scorp +federal +form7004 +extension +irs +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: Verify $TAX_YEAR reasonable compensation" "${TAX_YEAR}-12-15" "bgs.federal" "M" "+scorp +federal +compensation +salary +compliance +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: Calculate $TAX_YEAR shareholder basis" "${FILING_YEAR}-02-15" "bgs.federal" "M" "+scorp +federal +basis +shareholder +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: Review/Make $TAX_YEAR Michigan FTE Election" "${TAX_YEAR}-03-15" "bgs.michigan" "H" "+scorp +michigan +state +FTE +election +flowthrough +treasury +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: File $TAX_YEAR Michigan FTE Return (5774)" "${FILING_YEAR}-03-31" "bgs.michigan" "H" "+scorp +michigan +state +FTE +form5774 +annual +return +treasury +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: Issue $TAX_YEAR Michigan FTE K-1" "${FILING_YEAR}-03-31" "bgs.michigan" "H" "+scorp +michigan +state +FTE +K1 +member +treasury +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: $TAX_YEAR Michigan FTE Q1 Estimated" "${TAX_YEAR}-04-15" "bgs.michigan.estimated" "H" "+scorp +michigan +state +FTE +form5778 +estimated +quarterly +Q1 +payment +treasury +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: $TAX_YEAR Michigan FTE Q2 Estimated" "${TAX_YEAR}-06-15" "bgs.michigan.estimated" "H" "+scorp +michigan +state +FTE +form5778 +estimated +quarterly +Q2 +payment +treasury +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: $TAX_YEAR Michigan FTE Q3 Estimated" "${TAX_YEAR}-09-15" "bgs.michigan.estimated" "H" "+scorp +michigan +state +FTE +form5778 +estimated +quarterly +Q3 +payment +treasury +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: $TAX_YEAR Michigan FTE Q4 Estimated" "${TAX_YEAR}-12-15" "bgs.michigan.estimated" "H" "+scorp +michigan +state +FTE +form5778 +estimated +quarterly +Q4 +payment +treasury +bgs +geoscience +ty${TAX_YEAR}"
+
+    # BGS EMPLOYER/PAYROLL
+    echo ""
+    echo -e "${YELLOW}▶ S-CORP PAYROLL - $SCORP${NC}"
+
+    add_task "$SCORP: Prepare $TAX_YEAR W-2 for Frank Breen" "${FILING_YEAR}-01-31" "bgs.employer" "H" "+scorp +employer +W2 +payroll +annual +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: File $TAX_YEAR W-2/W-3 with SSA" "${FILING_YEAR}-01-31" "bgs.employer" "H" "+scorp +employer +W2 +W3 +ssa +annual +filing +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: File $TAX_YEAR Q1 Form 941" "${TAX_YEAR}-04-30" "bgs.employer.payroll" "H" "+scorp +employer +payroll +form941 +quarterly +Q1 +irs +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: File $TAX_YEAR Q2 Form 941" "${TAX_YEAR}-07-31" "bgs.employer.payroll" "H" "+scorp +employer +payroll +form941 +quarterly +Q2 +irs +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: File $TAX_YEAR Q3 Form 941" "${TAX_YEAR}-10-31" "bgs.employer.payroll" "H" "+scorp +employer +payroll +form941 +quarterly +Q3 +irs +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: File $TAX_YEAR Q4 Form 941" "${FILING_YEAR}-01-31" "bgs.employer.payroll" "H" "+scorp +employer +payroll +form941 +quarterly +Q4 +irs +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: File $TAX_YEAR Form 940 (FUTA)" "${FILING_YEAR}-01-31" "bgs.employer" "H" "+scorp +employer +FUTA +form940 +unemployment +annual +irs +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: File $TAX_YEAR MI Withholding (5082)" "${FILING_YEAR}-02-28" "bgs.employer.michigan" "H" "+scorp +employer +michigan +withholding +form5082 +annual +treasury +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: Submit $TAX_YEAR MI W-2s to Treasury" "${FILING_YEAR}-01-31" "bgs.employer.michigan" "H" "+scorp +employer +michigan +W2 +treasury +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: File $TAX_YEAR Q1 Michigan UIA" "${TAX_YEAR}-04-30" "bgs.employer.uia" "H" "+scorp +employer +michigan +UIA +unemployment +quarterly +Q1 +MiWAM +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: File $TAX_YEAR Q2 Michigan UIA" "${TAX_YEAR}-07-31" "bgs.employer.uia" "H" "+scorp +employer +michigan +UIA +unemployment +quarterly +Q2 +MiWAM +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: File $TAX_YEAR Q3 Michigan UIA" "${TAX_YEAR}-10-31" "bgs.employer.uia" "H" "+scorp +employer +michigan +UIA +unemployment +quarterly +Q3 +MiWAM +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: File $TAX_YEAR Q4 Michigan UIA" "${FILING_YEAR}-01-31" "bgs.employer.uia" "H" "+scorp +employer +michigan +UIA +unemployment +quarterly +Q4 +MiWAM +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: File $TAX_YEAR MI Annual Report (LARA)" "${FILING_YEAR}-02-15" "bgs.compliance" "M" "+scorp +michigan +LARA +annualreport +CORA +compliance +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: Identify $TAX_YEAR contractors for 1099-NEC" "${FILING_YEAR}-01-15" "bgs.1099" "M" "+scorp +1099NEC +contractor +compliance +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: Send $TAX_YEAR 1099-NEC to contractors" "${FILING_YEAR}-01-31" "bgs.1099" "H" "+scorp +1099NEC +contractor +distribute +irs +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: File $TAX_YEAR 1099-NEC with IRS" "${FILING_YEAR}-01-31" "bgs.1099" "H" "+scorp +1099NEC +contractor +filing +irs +bgs +geoscience +ty${TAX_YEAR}"
+
+    # MHB PROPERTIES LLC
+    echo ""
+    echo -e "${YELLOW}▶ LLC - $LLC${NC}"
+
+    add_task "$LLC: File $TAX_YEAR Federal Partnership Return (1065)" "${FILING_YEAR}-03-15" "mhb.federal" "H" "+llc +partnership +federal +form1065 +annual +return +irs +mhb +realestate +ty${TAX_YEAR}"
+    add_task "$LLC: Issue $TAX_YEAR Schedule K-1 to members" "${FILING_YEAR}-03-15" "mhb.federal" "H" "+llc +partnership +federal +K1 +scheduleK1 +member +irs +mhb +realestate +ty${TAX_YEAR}"
+    add_task "$LLC: File $TAX_YEAR Federal Extension (7004)" "${FILING_YEAR}-03-15" "mhb.federal" "M" "+llc +partnership +federal +form7004 +extension +irs +mhb +realestate +ty${TAX_YEAR}"
+    add_task "$LLC: Calculate $TAX_YEAR depreciation - ALL" "${FILING_YEAR}-02-15" "mhb.federal" "H" "+llc +federal +depreciation +rental +realestate +mhb +ty${TAX_YEAR}"
+    add_task "$LLC: Review $TAX_YEAR rental income/expenses" "${FILING_YEAR}-02-01" "mhb.federal" "H" "+llc +federal +rental +income +expense +review +mhb +realestate +ty${TAX_YEAR}"
+    add_task "$LLC: Review/Make $TAX_YEAR Michigan FTE Election" "${TAX_YEAR}-03-15" "mhb.michigan" "H" "+llc +michigan +state +FTE +election +flowthrough +treasury +mhb +realestate +ty${TAX_YEAR}"
+    add_task "$LLC: File $TAX_YEAR Michigan FTE Return (5774)" "${FILING_YEAR}-03-31" "mhb.michigan" "H" "+llc +michigan +state +FTE +form5774 +annual +return +treasury +mhb +realestate +ty${TAX_YEAR}"
+    add_task "$LLC: Issue $TAX_YEAR Michigan FTE K-1" "${FILING_YEAR}-03-31" "mhb.michigan" "H" "+llc +michigan +state +FTE +K1 +member +treasury +mhb +realestate +ty${TAX_YEAR}"
+    add_task "$LLC: $TAX_YEAR Michigan FTE Q1 Estimated" "${TAX_YEAR}-04-15" "mhb.michigan.estimated" "H" "+llc +michigan +state +FTE +form5778 +estimated +quarterly +Q1 +payment +treasury +mhb +realestate +ty${TAX_YEAR}"
+    add_task "$LLC: $TAX_YEAR Michigan FTE Q2 Estimated" "${TAX_YEAR}-06-15" "mhb.michigan.estimated" "H" "+llc +michigan +state +FTE +form5778 +estimated +quarterly +Q2 +payment +treasury +mhb +realestate +ty${TAX_YEAR}"
+    add_task "$LLC: $TAX_YEAR Michigan FTE Q3 Estimated" "${TAX_YEAR}-09-15" "mhb.michigan.estimated" "H" "+llc +michigan +state +FTE +form5778 +estimated +quarterly +Q3 +payment +treasury +mhb +realestate +ty${TAX_YEAR}"
+    add_task "$LLC: $TAX_YEAR Michigan FTE Q4 Estimated" "${TAX_YEAR}-12-15" "mhb.michigan.estimated" "H" "+llc +michigan +state +FTE +form5778 +estimated +quarterly +Q4 +payment +treasury +mhb +realestate +ty${TAX_YEAR}"
+    add_task "$LLC: File $TAX_YEAR MI Annual Report (LARA)" "${FILING_YEAR}-02-15" "mhb.compliance" "M" "+llc +michigan +LARA +annualreport +CORA +compliance +mhb +realestate +ty${TAX_YEAR}"
+    add_task "$LLC: Identify $TAX_YEAR vendors for 1099" "${FILING_YEAR}-01-15" "mhb.1099" "M" "+llc +1099 +vendor +compliance +mhb +realestate +ty${TAX_YEAR}"
+    add_task "$LLC: Send $TAX_YEAR 1099s to vendors" "${FILING_YEAR}-01-31" "mhb.1099" "M" "+llc +1099 +vendor +distribute +irs +mhb +realestate +ty${TAX_YEAR}"
+
+    # 905 BROWN
+    echo ""
+    echo -e "${YELLOW}▶ PROPERTY: $PROP1${NC}"
+
+    add_task "$LLC ($PROP1): Review $TAX_YEAR assessment" "${TAX_YEAR}-03-01" "mhb.property.905brown" "M" "+llc +propertytax +assessment +review +mhb +realestate +905brown +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP1): Pay $TAX_YEAR Summer taxes" "${TAX_YEAR}-09-14" "mhb.property.905brown" "H" "+llc +propertytax +summer +payment +mhb +realestate +905brown +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP1): Pay $TAX_YEAR Winter taxes" "${FILING_YEAR}-02-14" "mhb.property.905brown" "H" "+llc +propertytax +winter +payment +mhb +realestate +905brown +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP1): Compile $TAX_YEAR rental income" "${FILING_YEAR}-01-31" "mhb.income.905brown" "H" "+llc +rental +income +mhb +realestate +905brown +documents +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP1): Compile $TAX_YEAR expenses" "${FILING_YEAR}-01-31" "mhb.expenses.905brown" "H" "+llc +rental +expense +mhb +realestate +905brown +documents +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP1): Gather $TAX_YEAR 1098" "${FILING_YEAR}-02-15" "mhb.documents.905brown" "M" "+llc +1098 +mortgage +interest +mhb +realestate +905brown +documents +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP1): Review $TAX_YEAR insurance" "${FILING_YEAR}-01-31" "mhb.documents.905brown" "M" "+llc +insurance +premium +mhb +realestate +905brown +documents +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP1): Calculate $TAX_YEAR depreciation" "${FILING_YEAR}-02-15" "mhb.federal.905brown" "M" "+llc +depreciation +rental +mhb +realestate +905brown +ty${TAX_YEAR}"
+
+    # 711 PINE
+    echo ""
+    echo -e "${YELLOW}▶ PROPERTY: $PROP2${NC}"
+
+    add_task "$LLC ($PROP2): Review $TAX_YEAR assessment" "${TAX_YEAR}-03-01" "mhb.property.711pine" "M" "+llc +propertytax +assessment +review +mhb +realestate +711pine +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP2): Pay $TAX_YEAR Summer taxes" "${TAX_YEAR}-09-14" "mhb.property.711pine" "H" "+llc +propertytax +summer +payment +mhb +realestate +711pine +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP2): Pay $TAX_YEAR Winter taxes" "${FILING_YEAR}-02-14" "mhb.property.711pine" "H" "+llc +propertytax +winter +payment +mhb +realestate +711pine +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP2): Compile $TAX_YEAR rental income" "${FILING_YEAR}-01-31" "mhb.income.711pine" "H" "+llc +rental +income +mhb +realestate +711pine +documents +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP2): Compile $TAX_YEAR expenses" "${FILING_YEAR}-01-31" "mhb.expenses.711pine" "H" "+llc +rental +expense +mhb +realestate +711pine +documents +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP2): Gather $TAX_YEAR 1098" "${FILING_YEAR}-02-15" "mhb.documents.711pine" "M" "+llc +1098 +mortgage +interest +mhb +realestate +711pine +documents +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP2): Review $TAX_YEAR insurance" "${FILING_YEAR}-01-31" "mhb.documents.711pine" "M" "+llc +insurance +premium +mhb +realestate +711pine +documents +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP2): Calculate $TAX_YEAR depreciation" "${FILING_YEAR}-02-15" "mhb.federal.711pine" "M" "+llc +depreciation +rental +mhb +realestate +711pine +ty${TAX_YEAR}"
+
+    # 819 HELEN
+    echo ""
+    echo -e "${YELLOW}▶ PROPERTY: $PROP3${NC}"
+
+    add_task "$LLC ($PROP3): Review $TAX_YEAR assessment" "${TAX_YEAR}-03-01" "mhb.property.819helen" "M" "+llc +propertytax +assessment +review +mhb +realestate +819helen +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP3): Pay $TAX_YEAR Summer taxes" "${TAX_YEAR}-09-14" "mhb.property.819helen" "H" "+llc +propertytax +summer +payment +mhb +realestate +819helen +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP3): Pay $TAX_YEAR Winter taxes" "${FILING_YEAR}-02-14" "mhb.property.819helen" "H" "+llc +propertytax +winter +payment +mhb +realestate +819helen +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP3): Compile $TAX_YEAR rental income" "${FILING_YEAR}-01-31" "mhb.income.819helen" "H" "+llc +rental +income +mhb +realestate +819helen +documents +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP3): Compile $TAX_YEAR expenses" "${FILING_YEAR}-01-31" "mhb.expenses.819helen" "H" "+llc +rental +expense +mhb +realestate +819helen +documents +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP3): Gather $TAX_YEAR 1098" "${FILING_YEAR}-02-15" "mhb.documents.819helen" "M" "+llc +1098 +mortgage +interest +mhb +realestate +819helen +documents +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP3): Review $TAX_YEAR insurance" "${FILING_YEAR}-01-31" "mhb.documents.819helen" "M" "+llc +insurance +premium +mhb +realestate +819helen +documents +ty${TAX_YEAR}"
+    add_task "$LLC ($PROP3): Calculate $TAX_YEAR depreciation" "${FILING_YEAR}-02-15" "mhb.federal.819helen" "M" "+llc +depreciation +rental +mhb +realestate +819helen +ty${TAX_YEAR}"
+
+    # DOCUMENT COLLECTION - PERSONAL
+    echo ""
+    echo -e "${YELLOW}▶ DOCUMENTS - PERSONAL${NC}"
+
+    add_task "$PERSONAL: Gather $TAX_YEAR W-2 from $SCORP" "${FILING_YEAR}-02-15" "documents.personal" "M" "+documents +collection +W2 +income +personal +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: Gather $TAX_YEAR K-1 from $SCORP" "${FILING_YEAR}-03-20" "documents.personal" "H" "+documents +collection +K1 +income +scorp +personal +fbreen +bgs +ty${TAX_YEAR}"
+    add_task "$PERSONAL: Gather $TAX_YEAR K-1 from $LLC" "${FILING_YEAR}-03-20" "documents.personal" "H" "+documents +collection +K1 +income +llc +personal +fbreen +mhb +ty${TAX_YEAR}"
+    add_task "$PERSONAL: Gather $TAX_YEAR 1099-INT" "${FILING_YEAR}-02-15" "documents.personal" "M" "+documents +collection +1099INT +income +interest +personal +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: Gather $TAX_YEAR 1099-DIV" "${FILING_YEAR}-02-15" "documents.personal" "M" "+documents +collection +1099DIV +income +dividends +personal +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: Gather $TAX_YEAR 1099-B" "${FILING_YEAR}-02-15" "documents.personal" "M" "+documents +collection +1099B +income +investments +personal +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: Gather $TAX_YEAR 1098 (mortgage)" "${FILING_YEAR}-02-15" "documents.personal" "M" "+documents +collection +1098 +deduction +mortgage +personal +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: Compile $TAX_YEAR charitable donations" "${FILING_YEAR}-02-15" "documents.personal" "M" "+documents +collection +charitable +donation +deduction +personal +fbreen +ty${TAX_YEAR}"
+    add_task "$PERSONAL: Gather $TAX_YEAR 1095 (health)" "${FILING_YEAR}-02-15" "documents.personal" "M" "+documents +collection +1095 +healthcare +insurance +personal +fbreen +ty${TAX_YEAR}"
+
+    # DOCUMENT COLLECTION - BGS
+    echo ""
+    echo -e "${YELLOW}▶ DOCUMENTS - $SCORP${NC}"
+
+    add_task "$SCORP: Compile $TAX_YEAR P&L" "${FILING_YEAR}-02-01" "documents.bgs" "H" "+documents +collection +PL +financial +scorp +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: Compile $TAX_YEAR balance sheet" "${FILING_YEAR}-02-01" "documents.bgs" "H" "+documents +collection +balancesheet +financial +scorp +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: Reconcile $TAX_YEAR bank statements" "${FILING_YEAR}-01-31" "documents.bgs" "H" "+documents +collection +bank +reconciliation +scorp +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: Compile $TAX_YEAR expenses" "${FILING_YEAR}-02-01" "documents.bgs" "M" "+documents +collection +expense +receipts +scorp +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: Compile $TAX_YEAR mileage log" "${FILING_YEAR}-02-01" "documents.bgs" "M" "+documents +collection +mileage +vehicle +scorp +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "$SCORP: Compile $TAX_YEAR home office" "${FILING_YEAR}-02-01" "documents.bgs" "M" "+documents +collection +homeoffice +expense +scorp +bgs +geoscience +ty${TAX_YEAR}"
+
+    # TAX PLANNING
+    echo ""
+    echo -e "${YELLOW}▶ TAX PLANNING${NC}"
+
+    add_task "Schedule CPA for $TAX_YEAR returns" "${FILING_YEAR}-02-01" "planning" "M" "+planning +appointment +CPA +accountant +ty${TAX_YEAR}"
+    add_task "Review $TAX_YEAR year-end strategies" "${TAX_YEAR}-11-15" "planning" "M" "+planning +yearend +strategy +review +ty${TAX_YEAR}"
+    add_task "$PERSONAL: Maximize $TAX_YEAR retirement" "${TAX_YEAR}-12-31" "planning" "M" "+planning +retirement +contribution +personal +fbreen +ty${TAX_YEAR}"
+    add_task "$SCORP: Review $TAX_YEAR salary vs distribution" "${TAX_YEAR}-12-01" "planning" "M" "+planning +scorp +salary +distribution +bgs +geoscience +ty${TAX_YEAR}"
+    add_task "Archive $TAX_YEAR tax documents" "${FILING_YEAR}-05-01" "planning" "L" "+planning +archive +organization +backup +ty${TAX_YEAR}"
+
+    echo ""
+    echo -e "${GREEN}✓ Completed Tax Year $TAX_YEAR${NC}"
+}
+
+# =============================================================================
+#                           MAIN PROGRAM
+# =============================================================================
+
+CREATED_COUNT=0
+SKIPPED_COUNT=0
+FAILED_COUNT=0
+SELECTED_YEARS=()
+USE_START_DATE=false
+START_DATE=""
+
+while true; do
+    show_header
+    show_menu
+    read -r choice
+    
+    case $choice in
+        1)
+            if get_single_year && confirm_creation; then
+                CREATED_COUNT=0; SKIPPED_COUNT=0; FAILED_COUNT=0
+                for year in "${SELECTED_YEARS[@]}"; do
+                    create_tasks_for_year "$year"
+                done
+                echo ""
+                echo -e "${GREEN}Created: $CREATED_COUNT | Skipped: $SKIPPED_COUNT | Failed: $FAILED_COUNT${NC}"
+                echo -n "Press Enter..."
+                read -r
+            fi
+            ;;
+        2)
+            if get_year_range && confirm_creation; then
+                CREATED_COUNT=0; SKIPPED_COUNT=0; FAILED_COUNT=0
+                for year in "${SELECTED_YEARS[@]}"; do
+                    create_tasks_for_year "$year"
+                done
+                echo ""
+                echo -e "${GREEN}Created: $CREATED_COUNT | Skipped: $SKIPPED_COUNT | Failed: $FAILED_COUNT${NC}"
+                echo -n "Press Enter..."
+                read -r
+            fi
+            ;;
+        3)
+            if get_start_date && confirm_creation; then
+                CREATED_COUNT=0; SKIPPED_COUNT=0; FAILED_COUNT=0
+                for year in "${SELECTED_YEARS[@]}"; do
+                    create_tasks_for_year "$year"
+                done
+                echo ""
+                echo -e "${GREEN}Created: $CREATED_COUNT | Skipped: $SKIPPED_COUNT | Failed: $FAILED_COUNT${NC}"
+                echo -n "Press Enter..."
+                read -r
+                USE_START_DATE=false
+            fi
+            ;;
+        4)
+            get_current_year
+            if confirm_creation; then
+                CREATED_COUNT=0; SKIPPED_COUNT=0; FAILED_COUNT=0
+                for year in "${SELECTED_YEARS[@]}"; do
+                    create_tasks_for_year "$year"
+                done
+                echo ""
+                echo -e "${GREEN}Created: $CREATED_COUNT | Skipped: $SKIPPED_COUNT | Failed: $FAILED_COUNT${NC}"
+                echo -n "Press Enter..."
+                read -r
+            fi
+            ;;
+        5)
+            SELECTED_YEARS=(2024 2025 2026)
+            if confirm_creation; then
+                CREATED_COUNT=0; SKIPPED_COUNT=0; FAILED_COUNT=0
+                for year in "${SELECTED_YEARS[@]}"; do
+                    create_tasks_for_year "$year"
+                done
+                echo ""
+                echo -e "${GREEN}Created: $CREATED_COUNT | Skipped: $SKIPPED_COUNT | Failed: $FAILED_COUNT${NC}"
+                echo -n "Press Enter..."
+                read -r
+            fi
+            ;;
+        6) search_tasks ;;
+        7) search_presets ;;
+        8) show_existing_tasks ;;
+        9) show_help ;;
+        c|C) complete_task_with_note ;;
+        a|A) add_multiline_annotation ;;
+        v|V) view_task_details ;;
+        d|D) show_dashboard ;;
+        p|P) show_payment_tracker ;;
+        r|R) show_reports ;;
+        x|X) configure_taskwarrior ;;
+        q|Q)
+            echo -e "${GREEN}Goodbye!${NC}"
+            exit 0
+            ;;
+        *) echo -e "${RED}Invalid option.${NC}"; sleep 1 ;;
+    esac
+done
